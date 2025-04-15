@@ -1,10 +1,11 @@
+use freedesktop_desktop_entry::{Iter, default_paths, get_languages_from_env};
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use iced::{
     Size,
     widget::{column, text, text_input},
 };
-use std::fs;
+use std::collections::HashSet;
 
 struct Astatine {
     search: String,
@@ -79,68 +80,29 @@ struct Application {
     exec: String,
 }
 
-impl Application {
-    fn from(desktop_entry: String) -> Option<Self> {
-        let mut application = Self::default();
-        let mut is_application = false;
-        let mut should_display = true;
-        for line in desktop_entry.lines() {
-            if line.starts_with("Name=") {
-                application.name = get_desktop_entry_line_value(line);
-            } else if line.starts_with("Exec=") {
-                application.exec = get_desktop_entry_line_value(line);
-            } else if line.starts_with("NoDisplay=true") || line.starts_with("Hidden=true") {
-                should_display = false;
-            } else if line.starts_with("Type=Application") {
-                is_application = true;
-            }
-        }
-        if is_application
-            && should_display
-            && !application.name.is_empty()
-            && !application.exec.is_empty()
-        {
-            Some(application)
-        } else {
-            None
-        }
-    }
-}
-
-fn get_desktop_entry_line_value(line: &str) -> String {
-    line.split_once("=").unwrap().1.to_string()
-}
-
 fn get_applications() -> Vec<Application> {
+    let locales = get_languages_from_env();
+    let entries = Iter::new(default_paths())
+        .entries(Some(&locales))
+        .collect::<Vec<_>>();
+
     let mut applications = Vec::new();
+    let mut seen_execs = HashSet::new();
 
-    let paths = vec![
-        String::from("/usr/share/applications"),
-        String::from("/var/lib/flatpak/exports/share/applications"),
-        format!(
-            "{}/.local/share/flatpak/exports/share/applications",
-            std::env::var("HOME").unwrap_or_default()
-        ),
-    ];
+    for entry in entries {
+        let name = entry
+            .name(&locales)
+            .unwrap_or(std::borrow::Cow::Borrowed(""))
+            .to_string();
+        let exec = entry.exec().unwrap_or("").to_string();
 
-    for path in paths {
-        if let Ok(entries) = fs::read_dir(path) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if !path.to_string_lossy().ends_with(".desktop") {
-                        continue;
-                    }
-
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        if let Some(app) = Application::from(content) {
-                            applications.push(app);
-                        }
-                    }
-                }
-            }
+        if name.is_empty() || exec.is_empty() || !seen_execs.insert(exec.clone()) {
+            continue;
         }
+
+        applications.push(Application { name, exec });
     }
 
     applications
 }
+

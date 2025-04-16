@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = "0.13.1"
+iced = { version = "0.13.1", features = ["image", "svg"] }
 fuzzy-matcher = "0.3.7"
 freedesktop-desktop-entry = "0.7.9"
+freedesktop-icons = "0.3.1"
+icon-loader = { version = "0.4.0", features = ["gtk"] }

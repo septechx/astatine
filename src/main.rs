@@ -3,8 +3,8 @@ use freedesktop_icons::lookup;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use iced::{
-    ContentFit, Size,
-    widget::{column, image, row, svg, text, text_input},
+    ContentFit, Padding, Size, Theme,
+    widget::{column, container, image, row, svg, text, text_input},
 };
 use icon_loader::IconLoader;
 use std::collections::HashSet;
@@ -73,21 +73,32 @@ impl Astatine {
                         .into(),
                 };
 
-                row![icon_widget, text(name).center()].spacing(10)
+                row![
+                    icon_widget,
+                    text(name).align_y(iced::alignment::Vertical::Center)
+                ]
+                .spacing(10)
+                .align_y(iced::Alignment::Center)
+                .padding(Padding::from([2, 0]))
             })
             .fold(column![], |col, element| col.push(element));
 
-        column![
-            text_input("", &self.search).on_input(Message::SearchChanged),
-            application_list,
-        ]
+        container(
+            column![
+                text_input("", &self.search).on_input(Message::SearchChanged),
+                application_list,
+            ]
+            .spacing(16),
+        )
+        .padding(Padding::from([12, 24]))
         .into()
     }
 }
 
 fn main() -> iced::Result {
     iced::application("Astatine", Astatine::update, Astatine::view)
-        .window_size(Size::new(720.0, 640.0))
+        .window_size(Size::new(540.0, 648.0))
+        .theme(|_| Theme::TokyoNight)
         .run_with(|| (Astatine::new(), iced::Task::none()))
 }
 
@@ -123,10 +134,8 @@ fn get_applications() -> Vec<Application> {
         .into_owned();
 
     for entry in entries {
-        let name = entry
-            .name(&locales)
-            .unwrap_or(std::borrow::Cow::Borrowed(""))
-            .to_string();
+        let name = entry.name(&locales).unwrap().into_owned();
+        // Exec is required but some entries ignore that
         let exec = entry.exec().unwrap_or("").to_string();
         let icon_name = entry.icon().unwrap_or("").to_string();
 

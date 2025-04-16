@@ -55,34 +55,22 @@ impl Astatine {
             matched_apps.into_iter().map(|(_, app)| app).collect()
         };
 
-        let icon_loader = IconLoader::new_gtk().unwrap_or(IconLoader::new());
-
         let application_list = filtered_applications
             .iter()
             .map(|application| {
                 let name = application.name.clone();
-                let icon = application.icon.clone();
 
-                let icon_widget: iced::Element<'_, Message> = if icon.is_empty() {
-                    let icon = icon_loader
-                        .load_icon("application-x-executable")
-                        .unwrap()
-                        .file_for_size(32)
-                        .path()
-                        .to_string_lossy()
-                        .into_owned();
-
-                    svg(icon)
+                let icon_widget: iced::Element<'_, Message> = match &application.icon {
+                    Icon::Svg(path) => svg(path.clone())
                         .width(32)
                         .height(32)
                         .content_fit(ContentFit::ScaleDown)
-                        .into()
-                } else {
-                    image(icon)
+                        .into(),
+                    Icon::Image(path) => image(path.clone())
                         .width(32)
                         .height(32)
                         .content_fit(ContentFit::ScaleDown)
-                        .into()
+                        .into(),
                 };
 
                 row![icon_widget, text(name).center()].spacing(10)
@@ -107,7 +95,13 @@ fn main() -> iced::Result {
 struct Application {
     name: String,
     exec: String,
-    icon: String,
+    icon: Icon,
+}
+
+#[derive(Clone)]
+enum Icon {
+    Svg(String),
+    Image(String),
 }
 
 fn get_applications() -> Vec<Application> {
@@ -118,6 +112,15 @@ fn get_applications() -> Vec<Application> {
 
     let mut applications = Vec::new();
     let mut seen_execs = HashSet::new();
+
+    let icon_loader = IconLoader::new_gtk().unwrap_or(IconLoader::new());
+    let default_icon = icon_loader
+        .load_icon("application-x-executable")
+        .unwrap()
+        .file_for_size(32)
+        .path()
+        .to_string_lossy()
+        .into_owned();
 
     for entry in entries {
         let name = entry
@@ -132,13 +135,24 @@ fn get_applications() -> Vec<Application> {
         }
 
         let icon = if !icon_name.is_empty() {
-            lookup(&icon_name)
+            let path = lookup(&icon_name)
                 .with_size(32)
                 .find()
-                .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+
+            if !path.is_empty() {
+                if path.ends_with(".svg") {
+                    Icon::Svg(path)
+                } else {
+                    Icon::Image(path)
+                }
+            } else {
+                Icon::Svg(default_icon.clone())
+            }
         } else {
-            String::new()
+            Icon::Svg(default_icon.clone())
         };
 
         applications.push(Application { name, exec, icon });

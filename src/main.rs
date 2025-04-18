@@ -8,7 +8,7 @@ use iced::{
 };
 use icon_loader::IconLoader;
 use std::collections::HashSet;
-use std::process::Command;
+use std::process;
 
 struct Astatine {
     search: String,
@@ -20,6 +20,7 @@ struct Astatine {
 
 #[derive(Debug, Clone)]
 enum Message {
+    SearchSubmit,
     SearchChanged(String),
     KeyPressed(String),
 }
@@ -34,6 +35,7 @@ impl MessageProcessor<String> for SearchChangedProcessor {
         state.search = param;
         state.prev_focus = None;
         state.focus = 0;
+
         Task::none()
     }
 }
@@ -42,6 +44,9 @@ struct KeyPressedProcessor;
 impl MessageProcessor<String> for KeyPressedProcessor {
     fn process(state: &mut Astatine, param: String) -> Task<Message> {
         match param.as_str() {
+            "q" => {
+                process::exit(0);
+            }
             "j" => {
                 if let Some(prev_focus) = state.prev_focus {
                     state.focus = prev_focus;
@@ -56,11 +61,7 @@ impl MessageProcessor<String> for KeyPressedProcessor {
                 }
                 state.focus = state.focus.saturating_sub(1);
             }
-            "i" => {
-                state.prev_focus = Some(state.focus);
-                state.focus = 0;
-            }
-            "/" => {
+            "i" | "/" => {
                 state.prev_focus = Some(state.focus);
                 state.focus = 0;
             }
@@ -98,25 +99,36 @@ impl MessageProcessor<String> for KeyPressedProcessor {
         };
 
         if state.focus == 0 {
-            return text_input::focus("search");
+            return focus_search();
         }
 
         Task::none()
     }
 }
+
+struct SearchSubmitProcessor;
+impl MessageProcessor<()> for SearchSubmitProcessor {
+    fn process(state: &mut Astatine, _: ()) -> Task<Message> {
+        state.focus = 1;
+
+        text_input::focus("<none>")
+    }
+}
+
 impl Astatine {
     fn new() -> Self {
         Self {
             search: String::from(""),
             applications: get_applications(),
             matcher: SkimMatcherV2::default(),
-            focus: 1,
+            focus: 0,
             prev_focus: None,
         }
     }
 
     fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
+            Message::SearchSubmit => SearchSubmitProcessor::process(self, ()),
             Message::SearchChanged(param) => SearchChangedProcessor::process(self, param),
             Message::KeyPressed(param) => KeyPressedProcessor::process(self, param),
         }
@@ -198,6 +210,7 @@ impl Astatine {
             column![
                 text_input("", &self.search)
                     .on_input(Message::SearchChanged)
+                    .on_submit(Message::SearchSubmit)
                     .id("search"),
                 application_list,
             ]
@@ -216,24 +229,41 @@ impl Astatine {
             _ => None,
         })
     }
+
+    fn theme(&self) -> Theme {
+        Theme::TokyoNight
+    }
+
+    fn run() -> (Self, Task<Message>) {
+        (Astatine::new(), focus_search())
+    }
 }
 
 fn main() -> iced::Result {
     iced::application("Astatine", Astatine::update, Astatine::view)
-        .window_size(Size::new(540.0, 648.0))
-        .theme(|_| Theme::TokyoNight)
+        .window_size(Size::new(540.0, 620.0))
+        .theme(Astatine::theme)
         .subscription(Astatine::subscription)
-        .run_with(|| (Astatine::new(), iced::Task::none()))
+        .run_with(Astatine::run)
+}
+
+fn focus_search() -> Task<Message> {
+    text_input::focus("search")
 }
 
 fn execute_app_exec(exec: String) {
     let mut parts = exec.split_whitespace();
     if let Some(program) = parts.next() {
-        let args: Vec<&str> = parts.collect();
-        let _ = Command::new(program).args(args).spawn();
+        let args: Vec<&str> = parts.filter(|part| !part.starts_with('%')).collect();
+
+        if let Err(e) = process::Command::new(program).args(args).spawn() {
+            eprintln!("Failed to execute {}: {}", program, e);
+        }
     } else {
         eprintln!("No command provided.");
     }
+
+    process::exit(0);
 }
 
 #[derive(Clone)]
